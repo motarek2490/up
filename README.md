@@ -1,20 +1,43 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# FRIDA Admin
 
-# Run and deploy your AI Studio app
+تطبيق أندرويد (Kotlin + Jetpack Compose) للوحة تحكم منصة **FRIDA** لدعوات الزفاف والمناسبات.
 
-This contains everything you need to run your app locally.
+## الوظائف
+- **الرئيسية:** الطلبات المعلّقة، الدعوات المنشورة، الإيرادات، الزوار، آخر الطلبات.
+- **الطلبات:** مراجعة طلبات الدفع (فودافون كاش)، الموافقة (إنشاء الدعوة وكود المضيف) أو الرفض مع السبب.
+- **الدعوات:** تمديد / إنهاء / إعادة تفعيل / حذف، وإدارة القوالب المخصصة.
+- **الأسعار والإعدادات:** أسعار الباقات، رقم المحفظة، واتساب الدعم، وضع الصيانة، روابط الموقع والـ Worker.
+- **التقييمات والموسيقى:** اعتماد/حذف التقييمات، قص ورفع المقاطع الصوتية (Cloudflare R2 ثم Firebase Storage).
+- **الأمان:** تسجيل دخول Google/بريد، التحقق من صلاحية `admin` عبر Custom Claims، قفل PIN/بصمة، إشعارات FCM.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1AI3eea2N05aZkz8vLd9ScNbtiY2eSDwC
+## التشغيل محلياً
+1. افتح المشروع في Android Studio (JDK 11+).
+2. انسخ `.env.example` إلى `.env` وعدّل القيم:
+   - `GOOGLE_WEB_CLIENT_ID` — OAuth Web Client (النوع 3).
+   - `CLOUDFLARE_WORKER_URL` — رابط الـ Worker (يُستخدم كقيمة افتراضية في كل التطبيق عبر `AppConfig`).
+   - `ALLOWED_WORKER_HOSTS` — النطاقات المسموح لها باستقبال توكن الأدمن (مطابقة تامة للنطاق، فقط ما تثق به).
+3. ضع `google-services.json` الخاص بمشروعك في `app/`.
+4. شغّل على محاكي أو جهاز.
 
-## Run Locally
+### بناء نسخة الإصدار
+نسخة release تفعّل R8 (تصغير + تشويش) وتقليص الموارد. عيّن متغيرات البيئة:
+`KEYSTORE_PATH`, `STORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`. احتفظ بملف `mapping.txt` لكل إصدار.
 
-**Prerequisites:**  Node.js
+## نشر قواعد Firebase
+```bash
+firebase deploy --only firestore:indexes   # فهارس الطلبات والدعوات (مطلوبة للترتيب من الخادم)
+firebase deploy --only firestore:rules,storage   # راجع القواعد أولاً!
+```
+> `firestore.rules` و`storage.rules` مبنية على ما يستخدمه تطبيق الإدارة فقط. راجع الأجزاء العامة
+> (الطلبات، الدعوات، التقييمات، عداد الزوار) على ضوء ما يفعله الموقع قبل النشر.
 
+## ملاحظات تصميم
+- **الأدمن:** التحقق من الـ custom claim فقط. فشل الشبكة لا يسجّل الخروج، ويُعرض خطأ مع إعادة المحاولة.
+- **Cloud Functions أولاً:** `approveOrder`, `rejectOrder`, `setHostCredentials`, `adminUpdateInvitationLifecycle`.
+  الاحتياطي المباشر لـ Firestore يعمل فقط عند عدم توفر الدالة (وليس عند رفض الخادم)، والحذف لا يملك احتياطياً.
+- **القوائم:** الترتيب والفلترة من الخادم قبل `limit`، و«تحميل المزيد» يزيد الحد.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## الاختبارات
+```bash
+./gradlew testDebugUnitTest
+```
