@@ -1,0 +1,82 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Storage rules cannot read Firestore, so the /admins/{uid} path is not available here:
+    // admin = custom claim OR the verified admin e-mail.
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        (request.auth.token.email != null &&
+         request.auth.token.email.lower() == 'mohammedtarek2490@gmail.com' &&
+         request.auth.token.email_verified == true)
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isAudio() {
+      return request.resource.contentType.matches('audio/.*');
+    }
+
+    // Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // 1. User images (galleries, couple photos, covers): owner or admin.
+    match /users/{userId}/images/{fileName} {
+      allow read: if true;
+      allow write: if (isOwner(userId) || isAdmin()) &&
+        request.resource.size < 10 * 1024 * 1024 && isImage();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // 2. User audio: owner or admin.
+    match /users/{userId}/audio/{fileName} {
+      allow read: if true;
+      allow write: if (isOwner(userId) || isAdmin()) &&
+        request.resource.size < 25 * 1024 * 1024 && isAudio();
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // Any other nested path inside the user's own folder: images/audio only.
+    match /users/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if (isOwner(userId) || isAdmin()) &&
+        request.resource.size < 25 * 1024 * 1024 && (isImage() || isAudio());
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // 3. Shared music library + generic audio: ADMIN ONLY.
+    // (Previously any signed-in visitor could overwrite or delete the shared music library.)
+    match /library/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 35 * 1024 * 1024 && (isAudio() || isImage());
+      allow delete: if isAdmin();
+    }
+
+    match /audio/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.size < 25 * 1024 * 1024 && isAudio();
+      allow delete: if isAdmin();
+    }
+
+    // 4. General images (gift/bank QR, misc): signed-in users may upload; only admin may delete.
+    match /images/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn() && request.resource.size < 10 * 1024 * 1024 && isImage();
+      allow delete: if isAdmin();
+    }
+  }
+}

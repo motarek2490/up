@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Exclude sensitive auth credentials, admin PIN hashes, and biometric preferences from system backups -->
+    <exclude domain="sharedpref" path="frida_admin_auth_prefs.xml" />
+</full-backup-content>

@@ -1,0 +1,272 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // GLOBAL SECURITY HELPERS
+    // =========================================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Admin = custom claim, OR the verified admin e-mail, OR a document in /admins/{uid}.
+    // (email_verified is REQUIRED for the e-mail path: an unverified e-mail/password account that
+    // merely claims the admin address must never be treated as admin.)
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        (request.auth.token.email != null &&
+         request.auth.token.email.lower() == 'mohammedtarek2490@gmail.com' &&
+         request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isOwner(ownerUid) {
+      return isSignedIn() && request.auth.uid == ownerUid;
+    }
+
+    function hostActive(invId) {
+      return isSignedIn() &&
+        request.auth.token.hostOf == invId &&
+        get(/databases/$(database)/documents/invitations/$(invId)).data.status != 'expired';
+    }
+
+    function isValidSlug(s) {
+      return s is string && s.matches('^[\\p{L}\\p{N}_-]{3,64}$');
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // /admins/{id}
+    // =========================================================================
+    match /admins/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // =========================================================================
+    // /invitations/{id}
+    // =========================================================================
+    match /invitations/{id} {
+      allow get: if (
+        resource.data.status == 'published' &&
+        resource.data.isExpired != true
+      ) || isAdmin() || isOwner(resource.data.ownerUid) || hostActive(id);
+
+      allow list: if isAdmin() || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+
+      allow create: if isSignedIn() &&
+        request.resource.data.id == id &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.status in ['draft', 'pending_approval'] &&
+        isValidSlug(request.resource.data.slug) &&
+        !('hostPassword' in request.resource.data) &&
+        !('hostAccessCode' in request.resource.data) &&
+        !('hostUsername' in request.resource.data) &&
+        !('customerPhone' in request.resource.data) &&
+        !('planTier' in request.resource.data) &&
+        !('expiresAt' in request.resource.data);
+
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.ownerUid == resource.data.ownerUid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'eventDetails', 'customColors', 'customFont',
+          'themeStyle', 'language', 'layoutType', 'templateId',
+          'updatedAt', 'status', 'slug', 'musicTrackUrl', 'musicTrackName',
+          'guestCount', 'galleryImages'
+        ]) &&
+        (
+          request.resource.data.status == resource.data.status ||
+          (resource.data.status == 'draft' && request.resource.data.status == 'pending_approval')
+        )
+      );
+
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+
+      match /rsvps/{rsvpId} {
+        allow create: if exists(/databases/$(database)/documents/invitations/$(id)) &&
+          get(/databases/$(database)/documents/invitations/$(id)).data.status == 'published' &&
+          request.resource.data.id == rsvpId &&
+          request.resource.data.invitationId == id &&
+          request.resource.data.guestName is string &&
+          request.resource.data.guestName.size() >= 2 &&
+          request.resource.data.guestName.size() <= 100 &&
+          request.resource.data.status in ['attending', 'declined', 'tentative', 'maybe'] &&
+          request.resource.data.guestCount is number &&
+          request.resource.data.guestCount >= 1 &&
+          request.resource.data.guestCount <= 20;
+
+        allow read, update, delete: if isAdmin() ||
+          (isSignedIn() && get(/databases/$(database)/documents/invitations/$(id)).data.ownerUid == request.auth.uid) ||
+          hostActive(id);
+      }
+    }
+
+    // =========================================================================
+    // /slugs/{slug}
+    // =========================================================================
+    match /slugs/{slug} {
+      allow get: if true;
+      allow list: if false;
+
+      allow create: if isSignedIn() &&
+        !exists(/databases/$(database)/documents/slugs/$(slug)) &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.ownerUid == request.auth.uid;
+
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.ownerUid == request.auth.uid
+      );
+
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+    }
+
+    // =========================================================================
+    // /wishes/{wishId}
+    // =========================================================================
+    match /wishes/{wishId} {
+      allow create: if exists(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)) &&
+        get(/databases/$(database)/documents/invitations/$(request.resource.data.invitationId)).data.status == 'published' &&
+        request.resource.data.approved == false &&
+        request.resource.data.authorName is string &&
+        request.resource.data.authorName.size() >= 2 &&
+        request.resource.data.authorName.size() <= 100 &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() >= 2 &&
+        request.resource.data.message.size() <= 1000 &&
+        (!('relationship' in request.resource.data) || (request.resource.data.relationship is string && request.resource.data.relationship.size() <= 100)) &&
+        request.resource.data.keys().hasOnly([
+          'id', 'invitationId', 'authorName', 'message', 'relationship', 'approved', 'createdAt'
+        ]);
+
+      allow read: if resource.data.approved == true ||
+        isAdmin() ||
+        (isSignedIn() && get(/databases/$(database)/documents/invitations/$(resource.data.invitationId)).data.ownerUid == request.auth.uid) ||
+        hostActive(resource.data.invitationId);
+
+      allow update, delete: if isAdmin() ||
+        (isSignedIn() && get(/databases/$(database)/documents/invitations/$(resource.data.invitationId)).data.ownerUid == request.auth.uid) ||
+        hostActive(resource.data.invitationId);
+    }
+
+    // =========================================================================
+    // /invitation_private/{id}
+    // =========================================================================
+    match /invitation_private/{id} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // /orders/{id}
+    // =========================================================================
+    match /orders/{id} {
+      allow create: if isSignedIn() &&
+        request.resource.data.id == id &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.planTier in ['basic', 'royal_vip', 'diamond'] &&
+        request.resource.data.amount is number &&
+        request.resource.data.amount >= 0 &&
+        request.resource.data.amount <= 100000 &&
+        request.resource.data.customerName is string && request.resource.data.customerName.size() >= 2 && request.resource.data.customerName.size() <= 100 &&
+        request.resource.data.customerPhone is string && request.resource.data.customerPhone.size() >= 6 && request.resource.data.customerPhone.size() <= 30 &&
+        request.resource.data.vodafoneCashSender is string && request.resource.data.vodafoneCashSender.size() >= 6 && request.resource.data.vodafoneCashSender.size() <= 30;
+
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.ownerUid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // Settings, Music, Templates, Reviews, Rate Limits
+    // =========================================================================
+    match /settings/public_config {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /settings/admin_config {
+      allow read, write: if isAdmin();
+    }
+
+    // Public visitor counter. Anyone may bump it, but ONLY by +1 and only these fields
+    // (it used to be `allow write: if true`, i.e. anyone could overwrite or poison the stats).
+    // If the website uses different field names, add them to the hasOnly([...]) lists.
+    match /settings/visitor_stats {
+      allow read: if true;
+
+      allow create: if request.resource.data.keys().hasOnly(['totalVisitors', 'counter', 'updatedAt', 'lastVisitAt', 'lastVisit']) &&
+        request.resource.data.get('totalVisitors', 0) <= 1 &&
+        request.resource.data.get('counter', 0) <= 1;
+
+      allow update: if isAdmin() || (
+        request.resource.data.keys().hasOnly(['totalVisitors', 'counter', 'updatedAt', 'lastVisitAt', 'lastVisit']) &&
+        (request.resource.data.get('totalVisitors', 0) - resource.data.get('totalVisitors', 0)) in [0, 1] &&
+        (request.resource.data.get('counter', 0) - resource.data.get('counter', 0)) in [0, 1]
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    match /music_library/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /cloud_audio_files/{id} {
+      allow read: if true;
+      allow write, delete: if isAdmin();
+    }
+
+    // Used by the FRIDA Admin Android app for its own audio track metadata.
+    // NOTE: this is a different collection from /cloud_audio_files and
+    // /music_library above — all three currently coexist. Consider
+    // consolidating the Android app onto /music_library (the website's real
+    // source of truth for playable tracks) so there's only one place a track
+    // can live, rather than three.
+    match /audio_tracks/{id} {
+      allow read: if true;
+      allow write, delete: if isAdmin();
+    }
+
+    match /custom_templates/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /reviews/{id} {
+      allow read: if resource.data.approved == true || isAdmin();
+
+      allow create: if request.resource.data.approved == false &&
+        request.resource.data.rating is number &&
+        request.resource.data.rating >= 1 && request.resource.data.rating <= 5 &&
+        request.resource.data.customerName is string &&
+        request.resource.data.customerName.size() >= 2 && request.resource.data.customerName.size() <= 100 &&
+        request.resource.data.comment is string &&
+        request.resource.data.comment.size() >= 3 && request.resource.data.comment.size() <= 800;
+
+      allow update, delete: if isAdmin();
+    }
+
+    match /rate_limits/{id} {
+      allow read, write: if false;
+    }
+
+    // FRIDA Admin Android app — push-notification device tokens. Each admin
+    // can only read/write their own uid's subtree; the app itself must stay
+    // admin-only since this entire project treats isAdmin() as the gate for
+    // anything admin-dashboard-related.
+    match /admin_fcm_tokens/{uid}/tokens/{tokenId} {
+      allow read, write: if isAdmin() && request.auth.uid == uid;
+    }
+  }
+}

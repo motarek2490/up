@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <!-- Exclude sensitive auth and admin PIN preferences from cloud and device transfer backups -->
+    <cloud-backup>
+        <exclude domain="sharedpref" path="frida_admin_auth_prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="frida_admin_auth_prefs.xml" />
+    </device-transfer>
+</data-extraction-rules>

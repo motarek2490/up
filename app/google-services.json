@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "678727715764",
+    "project_id": "frida-ed3b5",
+    "storage_bucket": "frida-ed3b5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:678727715764:android:3a8ea4ab04748037b800e1",
+        "android_client_info": {
+          "package_name": "com.aistudio.fridaadmin.blpvbi"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "678727715764-9nmjgf9a03n1bl695sisr1gk6o8iotkg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.aistudio.fridaadmin.blpvbi",
+            "certificate_hash": "45b8d75b4cefb876609ceaac9f3b15504d6d604d"
+          }
+        },
+        {
+          "client_id": "678727715764-f0818mlvddi0co9nv1jl4etkd80e2qt0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBpDDev_-MpFiwBaamWYgIbBPQV8Q5g8i0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "678727715764-f0818mlvddi0co9nv1jl4etkd80e2qt0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
